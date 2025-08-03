@@ -1,6 +1,8 @@
 import google.generativeai as genai
 from config import settings
 from models import UserPreferences
+from PIL import Image
+import io
 
 class GeminiService:
     def __init__(self):
@@ -8,16 +10,17 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY não encontrada")
         
         genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
     
     
     async def generate_response_with_context(
         self,
-        message: str,
         history: list,
         preferences: UserPreferences
     ) -> str:
         try:
+            content_parts = []
+            
             system_prompt = f"""
             Você é Flert-AI, um assistente especialista em relacionamentos e comunicação.
             
@@ -32,14 +35,19 @@ class GeminiService:
             - Respeite o tamanho de resposta solicitado ({preferences.length})
             """
             
-            history_text = ""
+            content_parts.append(system_prompt)
+
             for msg in history:
-                role = "Usuário" if msg["role"] == "user" else "Assistente"
-                history_text += f"{role}: {msg['content']}\n"
+                content_parts.append(msg['content'])
+
+                if 'image_data' in msg and msg['image_data']:
+                    try:
+                        image = Image.open(io.BytesIO(msg['image_data']))
+                        content_parts.append(image)
+                    except Exception as img_e:
+                        print(f"Erro ao processar imagem: {str(img_e)}")
             
-            full_prompt = f"{system_prompt}\n\nHISTÓRICO DA CONVERSA:\n{history_text}\n\nResponda de forma contextual à conversa:"
-            
-            response = self.model.generate_content(full_prompt)
+            response = self.model.generate_content(content_parts)
             return response.text
             
         except Exception as e:
